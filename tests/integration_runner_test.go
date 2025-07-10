@@ -116,8 +116,9 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 	// Ensure we have wallet files
 	ensureWalletFiles(t)
 
-	// Create 4 nodes for testing
-	numNodes := 4
+	// Create 5 nodes for testing - node 4 will be excluded from known-nodes
+	numNodes := 5
+	authorizedNodes := 4 // Only nodes 0,1,2,3 are authorized
 	nodes := make([]*NodeProcess, numNodes)
 
 	// Cleanup function - define early so it's always available
@@ -148,18 +149,19 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 		port := 3500 + i
 		httpPort := 8081 + i
 
-		// Create bootstrap list with public_key:address pairs for 3 other nodes
+		// Create bootstrap list with public_key:address pairs for other nodes
+		// EXCLUDE node 4 from bootstrap lists since it's unauthorized
 		var bootstrapList []string
-		for j := 0; j < numNodes; j++ {
+		for j := 0; j < authorizedNodes; j++ { // Only include authorized nodes (0,1,2,3)
 			if j != i {
 				bootstrapList = append(bootstrapList, fmt.Sprintf("%s:127.0.0.1:%d", walletKeys[j], 3500+j))
 			}
 		}
 		bootstrapStr := strings.Join(bootstrapList, ",")
 
-		// Create known nodes list for gater - include ALL nodes (including self)
+		// Create known nodes list for gater - ONLY include nodes 0,1,2,3 (exclude node 4)
 		var knownNodesList []string
-		for j := 0; j < numNodes; j++ {
+		for j := 0; j < authorizedNodes; j++ {
 			knownNodesList = append(knownNodesList, fmt.Sprintf("%s:127.0.0.1:%d", walletKeys[j], 3500+j))
 		}
 		knownNodesStr := strings.Join(knownNodesList, ",")
@@ -198,7 +200,7 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 		t.Logf("Node %d is ready", i)
 	}
 
-	// Test comprehensive pub/sub functionality
+	// Test comprehensive pub/sub functionality with gater isolation
 	t.Run("TestPubSub", func(t *testing.T) {
 		// First verify all nodes are still running
 		for i, node := range nodes {
@@ -269,13 +271,14 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 			}
 		}
 
-		// Step 2: Test pub/sub between all nodes (0, 1, 2, 3)
-		testNodes := []int{0, 1, 2, 3} // Test all nodes for pub/sub
+		// Step 2: Test pub/sub between authorized nodes (0,1,2,3) - they should communicate
+		t.Log("=== Testing authorized nodes communication (0,1,2,3) ===")
+		authorizedNodes := []int{0, 1, 2, 3}
 
-		for _, publisherNode := range testNodes {
+		for _, publisherNode := range authorizedNodes {
 			// Create unique message with timestamp
 			timestamp := time.Now().Format("2006-01-02T15:04:05.000Z")
-			message := fmt.Sprintf("Message from node %d at %s", publisherNode, timestamp)
+			message := fmt.Sprintf("Authorized message from node %d at %s", publisherNode, timestamp)
 
 			t.Logf("Node %d publishing: %s", publisherNode, message)
 
@@ -297,8 +300,8 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 			// Wait for message propagation
 			time.Sleep(3 * time.Second)
 
-			// Check that OTHER test nodes received the message
-			for _, receiverNode := range testNodes {
+			// Check that OTHER authorized nodes received the message
+			for _, receiverNode := range authorizedNodes {
 				if receiverNode == publisherNode {
 					continue // Skip self
 				}
@@ -322,14 +325,10 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 					var ok bool
 					messages, ok = messagesRaw.([]interface{})
 					if !ok {
-						// Log the actual response for debugging
-						t.Logf("Response from node %d: %+v", receiverNode, response)
 						t.Fatalf("Invalid messages format from node %d - expected []interface{}, got %T", receiverNode, response["messages"])
 					}
 				} else {
-					// Handle nil case by treating it as empty array
 					messages = make([]interface{}, 0)
-					t.Logf("Node %d returned nil messages, treating as empty array", receiverNode)
 				}
 
 				// Look for our specific message
@@ -348,17 +347,132 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 
 				if !found {
 					t.Errorf("✗ Node %d did NOT receive message from node %d: %s", receiverNode, publisherNode, message)
-					t.Logf("Node %d has %d total messages", receiverNode, len(messages))
 				}
+			}
+
+			// Check that UNAUTHORIZED node 4 did NOT receive the message
+			resp4, err4 := http.Get(fmt.Sprintf("http://localhost:%d/messages?topic=%s", nodes[4].HTTPPort, topic))
+			if err4 != nil {
+				t.Fatalf("Failed to get messages from node 4: %v", err4)
+			}
+
+			var response4 map[string]interface{}
+			if err := json.NewDecoder(resp4.Body).Decode(&response4); err != nil {
+				resp4.Body.Close()
+				t.Fatalf("Failed to decode messages from node 4: %v", err)
+			}
+			resp4.Body.Close()
+
+			var messages4 []interface{}
+			if messagesRaw := response4["messages"]; messagesRaw != nil {
+				var ok bool
+				messages4, ok = messagesRaw.([]interface{})
+				if !ok {
+					messages4 = make([]interface{}, 0)
+				}
+			} else {
+				messages4 = make([]interface{}, 0)
+			}
+
+			// Look for the message - it should NOT be there
+			found4 := false
+			for _, msg := range messages4 {
+				msgMap, ok := msg.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if msgContent, ok := msgMap["message"].(string); ok && msgContent == message {
+					found4 = true
+					break
+				}
+			}
+
+			if found4 {
+				t.Errorf("✗ SECURITY BREACH: Node 4 (unauthorized) received message from node %d: %s", publisherNode, message)
+			} else {
+				t.Logf("✓ Node 4 (unauthorized) correctly did NOT receive message from node %d", publisherNode)
 			}
 		}
 
-		t.Log("Comprehensive pub/sub test completed successfully!")
+		// Step 3: Test that messages from unauthorized node 4 are not visible to authorized nodes
+		t.Log("=== Testing unauthorized node 4 isolation ===")
+
+		timestamp := time.Now().Format("2006-01-02T15:04:05.000Z")
+		unauthorizedMessage := fmt.Sprintf("UNAUTHORIZED message from node 4 at %s", timestamp)
+
+		t.Logf("Node 4 (unauthorized) publishing: %s", unauthorizedMessage)
+
+		// Node 4 publishes message
+		respPub, errPub := http.Post(
+			fmt.Sprintf("http://localhost:%d/publish", nodes[4].HTTPPort),
+			"application/json",
+			strings.NewReader(fmt.Sprintf(`{"topic":"%s","message":"%s"}`, topic, unauthorizedMessage)),
+		)
+		if errPub != nil {
+			t.Fatalf("Failed to publish from node 4: %v", errPub)
+		}
+		respPub.Body.Close()
+
+		if respPub.StatusCode != http.StatusOK {
+			t.Fatalf("Publish request failed from node 4 with status: %d", respPub.StatusCode)
+		}
+
+		// Wait for potential message propagation
+		time.Sleep(3 * time.Second)
+
+		// Check that authorized nodes did NOT receive the unauthorized message
+		for _, receiverNode := range authorizedNodes {
+			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/messages?topic=%s", nodes[receiverNode].HTTPPort, topic))
+			if err != nil {
+				t.Fatalf("Failed to get messages from node %d: %v", receiverNode, err)
+			}
+
+			var response map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+				resp.Body.Close()
+				t.Fatalf("Failed to decode messages from node %d: %v", receiverNode, err)
+			}
+			resp.Body.Close()
+
+			var messages []interface{}
+			if messagesRaw := response["messages"]; messagesRaw != nil {
+				var ok bool
+				messages, ok = messagesRaw.([]interface{})
+				if !ok {
+					messages = make([]interface{}, 0)
+				}
+			} else {
+				messages = make([]interface{}, 0)
+			}
+
+			// Look for the unauthorized message - it should NOT be there
+			found := false
+			for _, msg := range messages {
+				msgMap, ok := msg.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if msgContent, ok := msgMap["message"].(string); ok && msgContent == unauthorizedMessage {
+					found = true
+					break
+				}
+			}
+
+			if found {
+				t.Errorf("✗ SECURITY BREACH: Node %d (authorized) received message from unauthorized node 4: %s", receiverNode, unauthorizedMessage)
+			} else {
+				t.Logf("✓ Node %d (authorized) correctly did NOT receive message from unauthorized node 4", receiverNode)
+			}
+		}
+
+		t.Log("✓ Gater security test completed successfully!")
+		t.Log("✓ Authorized nodes (0,1,2,3) can communicate with each other")
+		t.Log("✓ Unauthorized node 4 is properly isolated from the network")
 	})
 }
 
 func ensureWalletFiles(t *testing.T) {
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 5; i++ {
 		filename := fmt.Sprintf("../test_wallet_%d.json", i)
 		if _, err := os.Stat(filename); os.IsNotExist(err) {
 			t.Fatalf("Wallet file %s not found. Run 'make generate-wallets' first.", filename)
