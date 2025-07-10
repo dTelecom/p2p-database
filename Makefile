@@ -24,18 +24,18 @@ test-unit:
 # Run integration tests only
 test-integration:
 	@echo "Running integration tests..."
-	@if [ ! -f test_wallet_0.json ] || [ ! -f test_wallet_1.json ] || [ ! -f test_wallet_2.json ] || [ ! -f test_wallet_3.json ]; then \
+	@if [ ! -f test_wallet_0.json ] || [ ! -f test_wallet_1.json ] || [ ! -f test_wallet_2.json ] || [ ! -f test_wallet_3.json ] || [ ! -f test_wallet_4.json ]; then \
 		$(MAKE) generate-wallets-multi; \
 	fi
 	@if [ ! -f bin/p2p-node ]; then \
 		$(MAKE) build-cli; \
 	fi
-	go test -v ./tests -run "TestIntegrationWithMultipleNodes" -timeout 10m
+	go test -v ./tests -run "TestIntegration" -timeout 10m
 
-# Generate 4 wallets for integration tests
+# Generate 5 wallets for integration tests
 generate-wallets-multi: build-cli
-	@echo "Generating 4 test wallets..."
-	@for i in 0 1 2 3; do \
+	@echo "Generating 5 test wallets..."
+	@for i in 0 1 2 3 4; do \
 		if [ ! -f test_wallet_$$i.json ]; then \
 			./bin/p2p-node -generate-wallet > test_wallet_$$i.json; \
 			cat test_wallet_$$i.json; \

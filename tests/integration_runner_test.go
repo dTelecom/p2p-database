@@ -151,11 +151,10 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 
 		// Create bootstrap list with public_key:address pairs for other nodes
 		// EXCLUDE node 4 from bootstrap lists since it's unauthorized
+		// INCLUDE SELF in bootstrap list - let the gater handle self-exclusion
 		var bootstrapList []string
 		for j := 0; j < authorizedNodes; j++ { // Only include authorized nodes (0,1,2,3)
-			if j != i {
-				bootstrapList = append(bootstrapList, fmt.Sprintf("%s:127.0.0.1:%d", walletKeys[j], 3500+j))
-			}
+			bootstrapList = append(bootstrapList, fmt.Sprintf("%s:127.0.0.1:%d", walletKeys[j], 3500+j))
 		}
 		bootstrapStr := strings.Join(bootstrapList, ",")
 
@@ -468,6 +467,253 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 		t.Log("✓ Gater security test completed successfully!")
 		t.Log("✓ Authorized nodes (0,1,2,3) can communicate with each other")
 		t.Log("✓ Unauthorized node 4 is properly isolated from the network")
+	})
+}
+
+func TestIntegrationBootstrapDiscovery(t *testing.T) {
+
+	// Ensure we have wallet files
+	ensureWalletFiles(t)
+
+	// Create 5 nodes for testing - all authorized, but only 0,1,2 are bootstrap nodes
+	numNodes := 5
+	bootstrapNodes := 3 // Only nodes 0,1,2 are bootstrap nodes
+	nodes := make([]*NodeProcess, numNodes)
+
+	// Cleanup function - define early so it's always available
+	cleanup := func() {
+		t.Log("Cleaning up nodes...")
+		for i, node := range nodes {
+			if node != nil {
+				t.Logf("Stopping node %d", i)
+				node.Stop()
+			}
+		}
+	}
+	defer cleanup()
+
+	// Load all wallet public keys first
+	walletKeys := make([]string, numNodes)
+	for i := 0; i < numNodes; i++ {
+		walletFile := fmt.Sprintf("test_wallet_%d.json", i)
+		publicKey, err := loadWalletPublicKey(walletFile)
+		if err != nil {
+			t.Fatalf("Failed to load public key from %s: %v", walletFile, err)
+		}
+		walletKeys[i] = publicKey
+	}
+
+	// Start all nodes
+	for i := 0; i < numNodes; i++ {
+		port := 3500 + i
+		httpPort := 8081 + i
+
+		// Create bootstrap list with ONLY nodes 0,1,2 (not including self)
+		// INCLUDE SELF in bootstrap list - let the gater handle self-exclusion
+		var bootstrapList []string
+		for j := 0; j < bootstrapNodes; j++ { // Only include bootstrap nodes (0,1,2)
+			bootstrapList = append(bootstrapList, fmt.Sprintf("%s:127.0.0.1:%d", walletKeys[j], 3500+j))
+		}
+		bootstrapStr := strings.Join(bootstrapList, ",")
+
+		// Create known nodes list for gater - include ALL nodes (0,1,2,3,4) since all are authorized
+		var knownNodesList []string
+		for j := 0; j < numNodes; j++ {
+			knownNodesList = append(knownNodesList, fmt.Sprintf("%s:127.0.0.1:%d", walletKeys[j], 3500+j))
+		}
+		knownNodesStr := strings.Join(knownNodesList, ",")
+
+		node := &NodeProcess{
+			Port:           port,
+			HTTPPort:       httpPort,
+			WalletFile:     fmt.Sprintf("test_wallet_%d.json", i),
+			BootstrapNodes: bootstrapStr,  // Only bootstrap nodes (0,1,2)
+			KnownNodes:     knownNodesStr, // All authorized nodes (0,1,2,3,4)
+		}
+
+		if err := node.Start(); err != nil {
+			cleanup() // Clean up any already started nodes
+			t.Fatalf("Failed to start node %d: %v", i, err)
+		}
+		nodes[i] = node
+		t.Logf("Node %d started with PID: %d", i, node.cmd.Process.Pid)
+
+		// Wait a bit between starting nodes
+		time.Sleep(2 * time.Second)
+
+		// Check if node is still running
+		if node.cmd.ProcessState != nil {
+			t.Fatalf("Node %d exited early with state: %v", i, node.cmd.ProcessState)
+		}
+	}
+
+	// Wait for all nodes to be ready
+	t.Log("Waiting for all nodes to be ready...")
+	for i, node := range nodes {
+		if err := node.WaitForReady(30 * time.Second); err != nil {
+			cleanup() // Clean up on readiness failure
+			t.Fatalf("Node %d failed to become ready: %v", i, err)
+		}
+		t.Logf("Node %d is ready", i)
+	}
+
+	// Test comprehensive pub/sub functionality with network discovery
+	t.Run("TestBootstrapDiscovery", func(t *testing.T) {
+		// First verify all nodes are still running
+		for i, node := range nodes {
+			if node.cmd.ProcessState != nil {
+				t.Fatalf("Node %d has exited before pub/sub test: %v", i, node.cmd.ProcessState)
+			}
+			t.Logf("Node %d (PID: %d) is still running", i, node.cmd.Process.Pid)
+		}
+
+		topic := "bootstrap_discovery_topic"
+
+		// Check all nodes are still running before starting test
+		t.Log("Checking node health before subscription...")
+		for i, node := range nodes {
+			if !node.IsRunning() {
+				t.Fatalf("Node %d is not running before subscription test", i)
+			}
+		}
+
+		// Step 1: All nodes subscribe to test topic
+		t.Log("All nodes subscribing to bootstrap_discovery_topic...")
+		for i, node := range nodes {
+			resp, err := http.Post(
+				fmt.Sprintf("http://localhost:%d/subscribe", node.HTTPPort),
+				"application/json",
+				strings.NewReader(fmt.Sprintf(`{"topic":"%s"}`, topic)),
+			)
+			if err != nil {
+				t.Fatalf("Failed to subscribe on node %d: %v", i, err)
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("Subscribe request failed on node %d with status: %d", i, resp.StatusCode)
+			}
+			t.Logf("Node %d subscribed to %s", i, topic)
+		}
+
+		// Wait for subscriptions to propagate and network discovery
+		t.Log("Waiting for network discovery and subscriptions to propagate...")
+		time.Sleep(10 * time.Second)
+
+		// Debug: Check connected peers for each node using /peers endpoint
+		for i, node := range nodes {
+			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/peers", node.HTTPPort))
+			if err != nil {
+				t.Logf("Failed to get peers from node %d: %v", i, err)
+				continue
+			}
+
+			var peersResponse map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&peersResponse); err != nil {
+				resp.Body.Close()
+				t.Logf("Failed to decode peers from node %d: %v", i, err)
+				continue
+			}
+			resp.Body.Close()
+
+			count, _ := peersResponse["count"].(float64)
+			peers, _ := peersResponse["peers"].([]interface{})
+
+			t.Logf("Node %d has %d connected peers:", i, int(count))
+			for j, peer := range peers {
+				if peerMap, ok := peer.(map[string]interface{}); ok {
+					peerID, _ := peerMap["id"].(string)
+					addr, _ := peerMap["addr"].(string)
+					t.Logf("  Peer %d: %s at %s", j, peerID, addr)
+				}
+			}
+		}
+
+		// Step 2: Test pub/sub between all nodes (0,1,2,3,4) - all should communicate
+		t.Log("=== Testing pub/sub between all authorized nodes (0,1,2,3,4) ===")
+		allNodes := []int{0, 1, 2, 3, 4}
+
+		for _, publisherNode := range allNodes {
+			// Create unique message with timestamp
+			timestamp := time.Now().Format("2006-01-02T15:04:05.000Z")
+			message := fmt.Sprintf("Bootstrap discovery message from node %d at %s", publisherNode, timestamp)
+
+			t.Logf("Node %d publishing: %s", publisherNode, message)
+
+			// Publish message
+			resp, err := http.Post(
+				fmt.Sprintf("http://localhost:%d/publish", nodes[publisherNode].HTTPPort),
+				"application/json",
+				strings.NewReader(fmt.Sprintf(`{"topic":"%s","message":"%s"}`, topic, message)),
+			)
+			if err != nil {
+				t.Fatalf("Failed to publish from node %d: %v", publisherNode, err)
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("Publish request failed from node %d with status: %d", publisherNode, resp.StatusCode)
+			}
+
+			// Wait for message propagation
+			time.Sleep(3 * time.Second)
+
+			// Check that ALL OTHER nodes received the message
+			for _, receiverNode := range allNodes {
+				if receiverNode == publisherNode {
+					continue // Skip self
+				}
+
+				// Get messages from receiver node
+				resp, err := http.Get(fmt.Sprintf("http://localhost:%d/messages?topic=%s", nodes[receiverNode].HTTPPort, topic))
+				if err != nil {
+					t.Fatalf("Failed to get messages from node %d: %v", receiverNode, err)
+				}
+
+				var response map[string]interface{}
+				if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+					resp.Body.Close()
+					t.Fatalf("Failed to decode messages from node %d: %v", receiverNode, err)
+				}
+				resp.Body.Close()
+
+				// Check if the message was received
+				var messages []interface{}
+				if messagesRaw := response["messages"]; messagesRaw != nil {
+					var ok bool
+					messages, ok = messagesRaw.([]interface{})
+					if !ok {
+						t.Fatalf("Invalid messages format from node %d - expected []interface{}, got %T", receiverNode, response["messages"])
+					}
+				} else {
+					messages = make([]interface{}, 0)
+				}
+
+				// Look for our specific message
+				found := false
+				for _, msg := range messages {
+					msgMap, ok := msg.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					if msgContent, ok := msgMap["message"].(string); ok && msgContent == message {
+						found = true
+						t.Logf("✓ Node %d received message from node %d: %s", receiverNode, publisherNode, message)
+						break
+					}
+				}
+
+				if !found {
+					t.Errorf("✗ Node %d did NOT receive message from node %d: %s", receiverNode, publisherNode, message)
+					t.Logf("Node %d has %d total messages", receiverNode, len(messages))
+				}
+			}
+		}
+
+		t.Log("✓ Bootstrap discovery test completed successfully!")
+		t.Log("✓ All authorized nodes (0,1,2,3,4) can communicate with each other")
+		t.Log("✓ Network discovery through bootstrap nodes (0,1,2) works correctly")
+		t.Log("✓ Non-bootstrap nodes (3,4) successfully discovered and joined the network")
 	})
 }
 

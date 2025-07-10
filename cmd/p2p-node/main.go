@@ -166,47 +166,56 @@ func main() {
 	logger.Infof("Node shutdown complete")
 }
 
-// createGetNodesFunc creates a function that returns bootstrap nodes
+// createGetNodesFunc creates a function that returns bootstrap nodes on first call, then known nodes
 func createGetNodesFunc(bootstrapNodes string, knownNodes string) p2p_database.GetNodesFunc {
+	firstCall := true
 	return func() map[string]string {
-		authorizedNodes := make(map[string]string)
+		if firstCall {
+			// First call during startup - return only bootstrap nodes
+			firstCall = false
+			bootstrapNodeMap := make(map[string]string)
 
-		// Parse comma-separated bootstrap nodes in format "public_key:address"
-		if bootstrapNodes != "" {
-			bootstrapList := strings.Split(bootstrapNodes, ",")
-			for _, entry := range bootstrapList {
-				entry = strings.TrimSpace(entry)
-				if entry != "" {
-					// Split by ":" to get public_key:address
-					parts := strings.Split(entry, ":")
-					if len(parts) >= 2 {
-						publicKey := parts[0]
-						// Rejoin address parts (in case address contains ":")
-						address := strings.Join(parts[1:], ":")
-						authorizedNodes[publicKey] = address
+			// Parse comma-separated bootstrap nodes in format "public_key:address"
+			if bootstrapNodes != "" {
+				bootstrapList := strings.Split(bootstrapNodes, ",")
+				for _, entry := range bootstrapList {
+					entry = strings.TrimSpace(entry)
+					if entry != "" {
+						// Split by ":" to get public_key:address
+						parts := strings.Split(entry, ":")
+						if len(parts) >= 2 {
+							publicKey := parts[0]
+							// Rejoin address parts (in case address contains ":")
+							address := strings.Join(parts[1:], ":")
+							bootstrapNodeMap[publicKey] = address
+						}
 					}
 				}
 			}
-		}
+			return bootstrapNodeMap
+		} else {
+			// Subsequent calls for gater - return only known nodes
+			authorizedNodes := make(map[string]string)
 
-		// Parse comma-separated known nodes in format "public_key:address"
-		if knownNodes != "" {
-			knownNodeList := strings.Split(knownNodes, ",")
-			for _, entry := range knownNodeList {
-				entry = strings.TrimSpace(entry)
-				if entry != "" {
-					// Split by ":" to get public_key:address
-					parts := strings.Split(entry, ":")
-					if len(parts) >= 2 {
-						publicKey := parts[0]
-						// Rejoin address parts (in case address contains ":")
-						address := strings.Join(parts[1:], ":")
-						authorizedNodes[publicKey] = address
+			// Parse comma-separated known nodes in format "public_key:address"
+			if knownNodes != "" {
+				knownNodeList := strings.Split(knownNodes, ",")
+				for _, entry := range knownNodeList {
+					entry = strings.TrimSpace(entry)
+					if entry != "" {
+						// Split by ":" to get public_key:address
+						parts := strings.Split(entry, ":")
+						if len(parts) >= 2 {
+							publicKey := parts[0]
+							// Rejoin address parts (in case address contains ":")
+							address := strings.Join(parts[1:], ":")
+							authorizedNodes[publicKey] = address
+						}
 					}
 				}
 			}
+			return authorizedNodes
 		}
-		return authorizedNodes
 	}
 }
 
