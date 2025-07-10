@@ -17,6 +17,7 @@ type NodeProcess struct {
 	HTTPPort       int
 	WalletFile     string
 	BootstrapNodes string
+	KnownNodes     string
 	cmd            *exec.Cmd
 }
 
@@ -42,7 +43,7 @@ func (n *NodeProcess) Start() error {
 		"-wallet", privateKey,
 		"-db", "test_network",
 		"-bootstrap", n.BootstrapNodes,
-		"-disable-gater", // Disable gater for testing
+		"-known-nodes", n.KnownNodes, // Use known nodes for gater
 	)
 
 	// Capture output for debugging - enable to see node logs
@@ -156,11 +157,19 @@ func TestIntegrationWithMultipleNodes(t *testing.T) {
 		}
 		bootstrapStr := strings.Join(bootstrapList, ",")
 
+		// Create known nodes list for gater - include ALL nodes (including self)
+		var knownNodesList []string
+		for j := 0; j < numNodes; j++ {
+			knownNodesList = append(knownNodesList, fmt.Sprintf("%s:127.0.0.1:%d", walletKeys[j], 3500+j))
+		}
+		knownNodesStr := strings.Join(knownNodesList, ",")
+
 		node := &NodeProcess{
 			Port:           port,
 			HTTPPort:       httpPort,
 			WalletFile:     fmt.Sprintf("test_wallet_%d.json", i),
 			BootstrapNodes: bootstrapStr,
+			KnownNodes:     knownNodesStr,
 		}
 
 		if err := node.Start(); err != nil {

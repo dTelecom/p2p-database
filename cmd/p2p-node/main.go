@@ -88,7 +88,8 @@ func main() {
 		databaseName   = flag.String("db", "test_database", "Database name")
 		httpPort       = flag.Int("http-port", 8080, "HTTP API port")
 		disableGater   = flag.Bool("disable-gater", false, "Disable connection gater")
-		bootstrapNodes = flag.String("bootstrap", "", "Comma-separated list of bootstrap nodes (IP:PORT)")
+		bootstrapNodes = flag.String("bootstrap", "", "Comma-separated list of bootstrap nodes (public_key:IP:PORT)")
+		knownNodes     = flag.String("known-nodes", "", "Comma-separated list of authorized nodes for gater (public_key:IP:PORT)")
 		generateWallet = flag.Bool("generate-wallet", false, "Generate a new wallet and exit")
 	)
 	flag.Parse()
@@ -113,7 +114,7 @@ func main() {
 		DatabaseName:     *databaseName,
 		WalletPrivateKey: *privateKey,
 		PeerListenPort:   *port,
-		GetNodes:         createGetNodesFunc(*bootstrapNodes),
+		GetNodes:         createGetNodesFunc(*bootstrapNodes, *knownNodes),
 	}
 
 	// Create node
@@ -166,29 +167,46 @@ func main() {
 }
 
 // createGetNodesFunc creates a function that returns bootstrap nodes
-func createGetNodesFunc(bootstrapNodes string) p2p_database.GetNodesFunc {
+func createGetNodesFunc(bootstrapNodes string, knownNodes string) p2p_database.GetNodesFunc {
 	return func() map[string]string {
-		if bootstrapNodes == "" {
-			return make(map[string]string)
-		}
+		authorizedNodes := make(map[string]string)
 
-		nodes := make(map[string]string)
 		// Parse comma-separated bootstrap nodes in format "public_key:address"
-		bootstrapList := strings.Split(bootstrapNodes, ",")
-		for _, entry := range bootstrapList {
-			entry = strings.TrimSpace(entry)
-			if entry != "" {
-				// Split by ":" to get public_key:address
-				parts := strings.Split(entry, ":")
-				if len(parts) >= 2 {
-					publicKey := parts[0]
-					// Rejoin address parts (in case address contains ":")
-					address := strings.Join(parts[1:], ":")
-					nodes[publicKey] = address
+		if bootstrapNodes != "" {
+			bootstrapList := strings.Split(bootstrapNodes, ",")
+			for _, entry := range bootstrapList {
+				entry = strings.TrimSpace(entry)
+				if entry != "" {
+					// Split by ":" to get public_key:address
+					parts := strings.Split(entry, ":")
+					if len(parts) >= 2 {
+						publicKey := parts[0]
+						// Rejoin address parts (in case address contains ":")
+						address := strings.Join(parts[1:], ":")
+						authorizedNodes[publicKey] = address
+					}
 				}
 			}
 		}
-		return nodes
+
+		// Parse comma-separated known nodes in format "public_key:address"
+		if knownNodes != "" {
+			knownNodeList := strings.Split(knownNodes, ",")
+			for _, entry := range knownNodeList {
+				entry = strings.TrimSpace(entry)
+				if entry != "" {
+					// Split by ":" to get public_key:address
+					parts := strings.Split(entry, ":")
+					if len(parts) >= 2 {
+						publicKey := parts[0]
+						// Rejoin address parts (in case address contains ":")
+						address := strings.Join(parts[1:], ":")
+						authorizedNodes[publicKey] = address
+					}
+				}
+			}
+		}
+		return authorizedNodes
 	}
 }
 
