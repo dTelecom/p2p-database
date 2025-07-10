@@ -1,2 +1,12 @@
 main
 .idea/
+
+# Build artifacts
+bin/
+
+# Test artifacts
+test_wallet_*.json
+
+# Coverage reports
+coverage.out
+coverage.html

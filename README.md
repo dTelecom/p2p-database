@@ -57,3 +57,55 @@ type LivekitLogger interface {
     Errorw(msg string, err error, keysAndValues ...interface{})
 }
 ```
+
+# Testing
+
+## Integration Tests
+
+The project includes integration tests that verify P2P functionality across multiple nodes:
+
+```bash
+# Run integration tests
+make test-integration
+
+# Run all tests
+make test
+
+# Run unit tests only
+make test-unit
+```
+
+### What the Integration Tests Verify
+
+- **Multi-node Setup**: 4 P2P nodes with different Solana wallets
+- **Node Discovery**: Nodes can find and connect to each other
+- **Pub/Sub Messaging**: Nodes can subscribe to topics and receive messages
+- **Network Communication**: Messages are properly distributed across the P2P network
+
+### Test Artifacts
+
+The integration tests automatically generate:
+- `test_wallet_*.json` - Solana wallet files for each test node
+- `bin/p2p-node` - CLI binary for running nodes
+
+To clean up test artifacts:
+```bash
+make clean-test     # Remove test wallets and coverage files
+make clean          # Remove build artifacts  
+make clean-all      # Remove everything
+```
+
+## Manual Testing
+
+You can also run nodes manually for testing:
+
+```bash
+# Build the CLI
+make build-cli
+
+# Generate a wallet
+./bin/p2p-node -generate-wallet
+
+# Run a node
+./bin/p2p-node -wallet <private_key> -port 3500 -http-port 8080
+```

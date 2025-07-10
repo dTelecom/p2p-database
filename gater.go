@@ -2,6 +2,9 @@ package p2p_database
 
 import (
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/dTelecom/p2p-database/internal/common"
@@ -92,9 +95,39 @@ func (e *SolanaConnectionGater) GetBoostrapNodes() (res []peer.AddrInfo, err err
 			continue
 		}
 
-		e.logger.Infof("Boostrap peer from smart contract /ip4/%s/tcp/3500/p2p/%s\n", ip, peerId)
+		// Parse IP and port from the value
+		var nodeIP string
+		var nodePort int = 3500 // Default port
 
-		addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/3500/p2p/%s", ip, peerId))
+		// Check if the value contains a port (IP:PORT format)
+		if strings.Contains(ip, ":") {
+			parts := strings.Split(ip, ":")
+			if len(parts) == 2 {
+				nodeIP = parts[0]
+				if port, err := strconv.Atoi(parts[1]); err == nil && port > 0 && port <= 65535 {
+					nodePort = port
+				} else {
+					e.logger.Errorf("invalid port in IP:PORT format: %s", ip)
+					continue
+				}
+			} else {
+				e.logger.Errorf("invalid IP:PORT format: %s", ip)
+				continue
+			}
+		} else {
+			// Just IP address, use default port
+			nodeIP = ip
+		}
+
+		// Validate that nodeIP is a valid IPv4 address
+		if net.ParseIP(nodeIP) == nil {
+			e.logger.Errorf("invalid IPv4 address: %s", nodeIP)
+			continue
+		}
+
+		e.logger.Infof("Boostrap peer from smart contract /ip4/%s/tcp/%d/p2p/%s\n", nodeIP, nodePort, peerId)
+
+		addr, err := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d/p2p/%s", nodeIP, nodePort, peerId))
 		if err != nil {
 			e.logger.Errorf(
 				"error create multiaddr bootstrap node from contract %s ip %s",
