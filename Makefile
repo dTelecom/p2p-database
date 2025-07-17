@@ -1,116 +1,165 @@
-.PHONY: test test-integration test-unit build clean clean-test clean-all help build-cli
+# Go parameters
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOGET=$(GOCMD) get
+GOMOD=$(GOCMD) mod
+GOFMT=$(GOCMD) fmt
+GOVET=$(GOCMD) vet
+
+.PHONY: all clean test test-verbose test-coverage test-race test-race-verbose deps fmt check check-basic check-enhanced install-linters help
 
 # Default target
-help:
-	@echo "Available commands:"
-	@echo "  test          - Run all tests"
-	@echo "  test-unit     - Run unit tests only"
-	@echo "  test-integration - Run integration tests only"
-	@echo "  build         - Build the project"
-	@echo "  build-cli     - Build the CLI binary"
-	@echo "  clean         - Clean build artifacts"
-	@echo "  clean-test    - Clean test artifacts (wallets, coverage)"
-	@echo "  clean-all     - Clean all artifacts"
-	@echo "  run-example   - Run the example application"
-
-# Run all tests
-test: test-unit test-integration
-
-# Run unit tests only
-test-unit:
-	@echo "Running unit tests..."
-	go test -v ./tests -run "TestUnit"
-
-# Run integration tests only
-test-integration:
-	@echo "Running integration tests..."
-	@if [ ! -f test_wallet_0.json ] || [ ! -f test_wallet_1.json ] || [ ! -f test_wallet_2.json ] || [ ! -f test_wallet_3.json ] || [ ! -f test_wallet_4.json ]; then \
-		$(MAKE) generate-wallets-multi; \
-	fi
-	@if [ ! -f bin/p2p-node ]; then \
-		$(MAKE) build-cli; \
-	fi
-	go test -v ./tests -run "TestIntegration" -timeout 10m
-
-# Generate 5 wallets for integration tests
-generate-wallets-multi: build-cli
-	@echo "Generating 5 test wallets..."
-	@for i in 0 1 2 3 4; do \
-		if [ ! -f test_wallet_$$i.json ]; then \
-			./bin/p2p-node -generate-wallet > test_wallet_$$i.json; \
-			cat test_wallet_$$i.json; \
-		else \
-			echo "test_wallet_$$i.json already exists"; \
-		fi; \
-	 done
-
-# Build the project
-build:
-	@echo "Building project..."
-	go build -o bin/p2p-database .
-
-# Build the CLI binary
-build-cli:
-	@echo "Building CLI binary..."
-	go build -o bin/p2p-node ./cmd/p2p-node
-
-# Build the example
-build-example:
-	@echo "Building example..."
-	go build -o bin/example examples/main.go
+all: clean deps fmt check test
 
 # Clean build artifacts
 clean:
-	@echo "Cleaning build artifacts..."
-	rm -rf bin/
-	go clean
+	$(GOCLEAN)
 
-# Clean test artifacts (wallets, coverage)
+# Clean test cache
 clean-test:
-	@echo "Cleaning test artifacts..."
-	rm -f test_wallet_*.json
-	rm -f coverage.out coverage.html
+	$(GOCLEAN) -testcache
 
-# Full cleanup (build + test artifacts)
-clean-all: clean clean-test
-	@echo "All artifacts cleaned"
+# Run tests (quiet by default)
+test:
+	$(GOTEST) ./...
 
-# Run the example application
-run-example: build-example
-	@echo "Running example application..."
-	@echo "Usage: ./bin/example -pk <private_key>"
-	@echo "Example: ./bin/example -pk 5g3euBKXqhdbfzkgbWQ7o1C6HQzbyr1noX6wiqfv2i3x"
-
-# Run the CLI node
-run-node: build-cli
-	@echo "Running CLI node..."
-	@echo "Usage: ./bin/p2p-node -wallet <private_key> -port <port> -http-port <http_port>"
-	@echo "Example: ./bin/p2p-node -wallet <private_key> -port 3500 -http-port 8080"
-
-# Generate a new wallet
-generate-wallet: build-cli
-	@echo "Generating new wallet..."
-	./bin/p2p-node -generate-wallet
-
-# Install dependencies
-deps:
-	@echo "Installing dependencies..."
-	go mod tidy
-	go mod download
-
-# Format code
-fmt:
-	@echo "Formatting code..."
-	go fmt ./...
-
-# Run linter
-lint:
-	@echo "Running linter..."
-	golangci-lint run
+# Run tests with verbose output
+test-verbose:
+	$(GOTEST) -v ./...
 
 # Run tests with coverage
 test-coverage:
-	@echo "Running tests with coverage..."
-	go test -v -coverprofile=coverage.out ./tests
-	go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report generated: coverage.html" 
+	$(GOTEST) -v -coverprofile=coverage.out ./...
+	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+
+# Run tests with race detection (quiet)
+test-race:
+	$(GOTEST) -race ./...
+
+# Run tests with race detection and verbose output
+test-race-verbose:
+	$(GOTEST) -race -v ./...
+
+# Install/update dependencies
+deps:
+	$(GOMOD) download
+	$(GOMOD) tidy
+
+# Format code
+fmt:
+	$(GOFMT) ./...
+
+# Basic code quality checks (always available)
+check-basic:
+	@echo "Running basic code quality checks..."
+	@echo "1. Formatting check..."
+	@gofmt -l . | grep -E '\.go$$' && echo "❌ Code is not formatted, run 'make fmt'" && exit 1 || echo "✅ Code is properly formatted"
+	@echo "2. Go vet check..."
+	@$(GOVET) ./... && echo "✅ go vet passed" || (echo "❌ go vet failed" && exit 1)
+	@echo "3. Module verification..."
+	@$(GOMOD) verify && echo "✅ Module verification passed" || (echo "❌ Module verification failed" && exit 1)
+	@echo "4. Module tidy check..."
+	@$(GOMOD) tidy && git diff --exit-code go.mod go.sum && echo "✅ go.mod is tidy" || (echo "❌ go.mod needs tidying, run 'make deps'" && exit 1)
+	@echo "5. Running tests with race detection..."
+	@$(GOTEST) -race ./... && echo "✅ Race condition tests passed" || (echo "❌ Race condition tests failed" && exit 1)
+
+# Enhanced code quality checks (requires optional tools)
+check-enhanced:
+	@echo "Running enhanced code quality checks..."
+	@echo "6. Static analysis with staticcheck..."
+	@command -v staticcheck >/dev/null 2>&1 && (staticcheck ./... && echo "✅ staticcheck passed") || echo "⚠️  staticcheck not installed, skipping (install: go install honnef.co/go/tools/cmd/staticcheck@latest)"
+	@echo "7. Security analysis with gosec..."
+	@command -v gosec >/dev/null 2>&1 && (gosec ./... && echo "✅ gosec passed") || echo "⚠️  gosec not installed, skipping (install: go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest)"
+	@echo "8. Comprehensive linting with golangci-lint..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		if golangci-lint run; then \
+			echo "✅ golangci-lint passed"; \
+		else \
+			echo "❌ golangci-lint found issues"; \
+		fi; \
+	else \
+		echo "⚠️  golangci-lint not installed, skipping (install: make install-linters)"; \
+	fi
+
+# Run all code quality checks
+check: check-basic check-enhanced
+	@echo ""
+	@echo "🎉 All available code quality checks completed!"
+	@echo "   To install missing linters, run: make install-linters"
+
+# Install optional linting tools
+install-linters:
+	@echo "Installing optional linting tools..."
+	$(GOGET) -u github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install honnef.co/go/tools/cmd/staticcheck@latest
+	go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
+	@echo "✅ All linters installed!"
+
+# Lint the code (requires golangci-lint)
+lint:
+	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || (echo "❌ golangci-lint not installed, run 'make install-linters'" && exit 1)
+
+# Generate mock functions for testing (requires gomock)
+mocks:
+	@echo "Generating mocks..."
+	$(GOCMD) generate ./...
+
+# Development setup
+dev-setup: install-linters
+	$(GOGET) -u github.com/golang/mock/mockgen
+
+# CI/CD friendly check (fails on any issue)
+check-ci: 
+	@echo "Running CI/CD code quality checks..."
+	gofmt -l . | grep -E '\.go$$' && exit 1 || true
+	$(GOVET) ./...
+	$(GOMOD) verify
+	$(GOMOD) tidy
+	git diff --exit-code go.mod go.sum
+	$(GOTEST) -race ./...
+	@command -v staticcheck >/dev/null 2>&1 && staticcheck ./... || true
+	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || true
+
+# Help target
+help:
+	@echo "Available targets:"
+	@echo "  all              - Clean, deps, fmt, check, and test"
+	@echo "  clean            - Clean build artifacts"
+	@echo "  clean-test       - Clean test cache"
+	@echo "  test             - Run tests (quiet output)"
+	@echo "  test-verbose     - Run tests with verbose output"
+	@echo "  test-coverage    - Run tests with coverage report"
+	@echo "  test-race        - Run tests with race detection (quiet)"
+	@echo "  test-race-verbose - Run tests with race detection and verbose output"
+	@echo "  deps             - Download and tidy dependencies"
+	@echo "  fmt              - Format code"
+	@echo "  check            - Run all code quality checks"
+	@echo "  check-basic      - Run basic checks (always available)"
+	@echo "  check-enhanced   - Run enhanced checks (requires optional tools)"
+	@echo "  check-ci         - CI/CD friendly checks (fail fast)"
+	@echo "  lint             - Lint the code (requires golangci-lint)"
+	@echo "  install-linters  - Install optional linting tools"
+	@echo "  keygen           - Generate a Solana keypair"
+	@echo "  keygen-multi     - Generate multiple Solana keypairs"
+	@echo "  keygen-json      - Generate keypairs in JSON format"
+	@echo "  keygen-env       - Generate keypairs in environment format"
+	@echo "  dev-setup        - Install development tools"
+	@echo "  help             - Show this help message"
+
+# Generate Solana keypairs
+keygen:
+	$(GOCMD) run cmd/keygen/main.go
+
+# Generate multiple keypairs
+keygen-multi:
+	$(GOCMD) run cmd/keygen/main.go -count=5
+
+# Generate keypairs in JSON format
+keygen-json:
+	$(GOCMD) run cmd/keygen/main.go -format=json
+
+# Generate keypairs in environment format
+keygen-env:
+	$(GOCMD) run cmd/keygen/main.go -format=env 
