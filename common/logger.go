@@ -74,6 +74,6 @@ func (l *livekitLoggerAdapter) Error(msg string, keysAndValues ...interface{}) {
 
 func (l *livekitLoggerAdapter) DebugEnabled() bool {
 	// LiveKit loggers don't typically have a debug enabled check
-	// so we assume debug is always enabled
-	return true
+	// so we assume debug is always disabled
+	return false
 }
