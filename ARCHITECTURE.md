@@ -2,13 +2,13 @@
 
 ## Overview
 
-This system is a **distributed peer-to-peer publish/subscribe network** built on libp2p, designed for secure, decentralized messaging in **DePIN (Decentralized Physical Infrastructure Network) applications**. The system provides **permissionless node participation** through **Solana smart contract registry integration**, where nodes are authorized via on-chain wallet verification.
+This system is a **distributed peer-to-peer publish/subscribe network** built on libp2p, designed for secure, decentralized messaging in **DePIN (Decentralized Physical Infrastructure Network) applications**. The system provides node admission through the Solana registry, where nodes are identified by their registered wallets.
 
 ## Key Characteristics
 
 - **Distributed Pub/Sub**: No central server; all nodes are equal peers
 - **DePIN-Optimized**: Designed for decentralized physical infrastructure networks
-- **Permissionless Access**: Nodes automatically authorized via Solana smart contract registry
+- **Node admission**: The Solana registry identifies authorized node wallets
 - **Security-First**: Solana wallet-based identity with smart contract gating
 - **Bootstrap Discovery**: New nodes join using DHT and registry-based peer discovery  
 - **Namespace Isolation**: Single database name acts as namespace for topic keys
@@ -455,7 +455,7 @@ func createDatabaseInstance(infra *P2PInfrastructure, config Config) (*DB, error
 - **Infrastructure Attacks**: Network topology monitoring for datacenter infrastructure
 
 #### Smart Contract Registry vs Manual Node Lists
-- **Permissionless Operation**: New nodes automatically authorized via smart contract
+- **Registry membership**: Node software checks the on-chain registry
 - **Dynamic Authorization**: Real-time registry updates without node restarts
 - **Decentralized Control**: No single point of failure for node authorization
 - **Audit Trail**: On-chain record of all authorization changes
@@ -961,7 +961,7 @@ This updated P2P distributed pub/sub system is specifically optimized for **DePI
 6. **Latest Technology Stack**: Go 1.23.11, libp2p v0.41.1, solana-go v1.12.0
 
 ### DePIN-Specific Benefits
-- **Permissionless Participation**: Nodes automatically authorized via smart contract (handled by node software)
+- **Registry membership**: Node software checks authorization against the smart contract
 - **Simple Integration**: Pubsub library receives authorization via function call, no RPC complexity
 - **Universal Connectivity**: Multi-transport strategy (QUIC + TCP + Circuit Relay) ensures nodes can connect regardless of NAT/firewall restrictions
 - **Economic Integration**: Registry tied to DePIN tokenomics and staking mechanisms  
@@ -974,4 +974,4 @@ This updated P2P distributed pub/sub system is specifically optimized for **DePI
 - **Economic Security**: Integration with DePIN reward/penalty mechanisms
 - **Infrastructure Protection**: Resource limits and reputation-based peer management
 
-This architecture provides a robust foundation for DePIN applications requiring secure, scalable, and economically-integrated peer-to-peer communication infrastructure. The clean separation of concerns ensures the pubsub library remains focused on messaging performance while the node software handles all smart contract complexity, enabling truly permissionless and decentralized operation. 
+This architecture provides a robust foundation for DePIN applications requiring secure, scalable, and economically-integrated peer-to-peer communication infrastructure. The clean separation of concerns ensures the pubsub library remains focused on messaging performance while the node software handles all smart contract complexity.

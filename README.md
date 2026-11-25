@@ -1,12 +1,16 @@
 # P2P Distributed Pub/Sub System for DePIN
 
-A distributed peer-to-peer publish/subscribe network built on libp2p, designed for secure, decentralized messaging in **DePIN (Decentralized Physical Infrastructure Network)** applications. The system provides **permissionless node participation** through **Solana smart contract registry integration**.
+This Go library carries pub/sub messages between dTelecom media nodes over libp2p. The [media server](https://github.com/dTelecom/livekit/blob/dtelecom-db/pkg/routing/localrouter.go) uses the mesh for room and participant routing. Node identity and admission depend on the [Solana registry](https://github.com/dTelecom/registry-program). dTelecom operates the admitted nodes.
+
+For calls in an application, start with the [Cloud quickstart](https://docs.dtelecom.org/quickstart/). For changes to mesh behavior, see [ARCHITECTURE.md](ARCHITECTURE.md) and check the version in the [server module](https://github.com/dTelecom/livekit/blob/dtelecom-db/go.mod).
+
+The earlier [p2p-realtime-database repository](https://github.com/dTelecom/p2p-realtime-database) is archived.
 
 ## Features
 
 - **Distributed P2P Architecture**: No central servers, all nodes are equal peers
 - **Solana Integration**: Identity and authorization via Solana wallet keypairs
-- **Smart Contract Registry**: Permissionless node participation via on-chain authorization
+- **Smart Contract Registry**: Node admission through the on-chain registry
 - **Multi-Transport Support**: QUIC (primary), TCP (fallback), Circuit Relay (NAT assistance)
 - **Real-time Messaging**: Publish/subscribe to arbitrary topics with JSON payloads
 - **Namespace Isolation**: Database-based topic namespacing for network segmentation
