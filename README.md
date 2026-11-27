@@ -38,29 +38,6 @@ The system includes robust bootstrap retry mechanisms to ensure network connecti
 - **Retry Termination**: Bootstrap retry automatically stops when the node becomes ready again
 - **Resource Cleanup**: All retry operations are properly cleaned up during node shutdown
 
-### **Example: Client Starts Before Bootstrap**
-```bash
-# Terminal 1: Start client (bootstrap not running yet)
-go run examples/simple-node/main.go \
-  -node-id "client" \
-  -private-key "..." \
-  -bootstrap-ip "127.0.0.1" \
-  -bootstrap-quic 4001 \
-  -bootstrap-tcp 4002
-
-# Client will show: "WARN: Initial bootstrap failed, starting retry process"
-# Client will retry every 5 seconds until bootstrap node comes online
-
-# Terminal 2: Start bootstrap node later
-go run examples/simple-node/main.go \
-  -node-id "bootstrap" \
-  -private-key "..." \
-  -quic-port 4001 \
-  -tcp-port 4002
-
-# Client will automatically connect: "INFO: Bootstrap retry successful"
-```
-
 ## Architecture
 
 ```
@@ -812,43 +789,9 @@ pubsubLogger := common.NewSlogLogger(logger)
 - **QUIC**: 4001 (default, primary transport)
 - **TCP**: 4002 (default, fallback transport)
 
-## 🚀 Simple Node Example
-
-Want to see the library in action? Check out our complete example:
-
-```bash
-cd examples/simple-node
-./test-demo.sh
-```
-
-This will generate keypairs and show you how to run two nodes that can communicate with each other via P2P pub/sub. The example includes:
-
-- 📋 **Interactive CLI** for subscribe/publish/unsubscribe operations
-- 🔔 **Real-time message notifications** with pretty printing
-- 👥 **Peer management** and status monitoring  
-- 🔐 **Mock authorization** that demonstrates registry integration
-- 📡 **Bootstrap discovery** for automatic peer finding
-
-See [`examples/simple-node/README.md`](examples/simple-node/README.md) for detailed instructions and usage examples. 
-
 ## Version Information
 
-### **Current Version**
-- **Library Version**: 1.0.0
-- **Go Version**: 1.23.11+
-- **libp2p Version**: v0.41.1
-- **Solana Integration**: v1.12.0
-
-### **Recent Changes**
-
-#### **v1.0.0** - Production Ready Release
-- ✅ **Bootstrap Retry & Network Resilience**: Automatic retry when bootstrap nodes are unavailable
-- ✅ **Client Before Bootstrap**: Support for clients starting before bootstrap nodes
-- ✅ **Bootstrap Node Failover**: Network recovery when bootstrap nodes go down
-- ✅ **Readiness State Management**: Track node readiness and automatic recovery
-- ✅ **Race Condition Fixes**: Thread-safe bootstrap retry implementation
-- ✅ **Comprehensive Testing**: 44 tests covering all critical functionality
-- ✅ **Production Deployment Guide**: Complete deployment and monitoring documentation
+See the [module versions](https://pkg.go.dev/github.com/dTelecom/p2p-database?tab=versions) for releases and [go.mod](go.mod) for the Go toolchain and dependency versions. The [local integration examples](test/integration_test.go) show how to construct nodes and exchange messages with fixture registry callbacks.
 
 #### **Key Features**
 - **Multi-Transport Support**: QUIC (primary), TCP (fallback), Circuit Relay (NAT assistance)
@@ -866,9 +809,6 @@ See [`examples/simple-node/README.md`](examples/simple-node/README.md) for detai
 - **Network**: IPv4, IPv6 support
 
 #### **Dependencies**
-- **Go**: 1.23.11 or later
-- **libp2p**: v0.41.1
-- **Solana**: v1.12.0
 - **Network**: QUIC/UDP and TCP support
 
 ### **Migration Guide**
@@ -884,4 +824,4 @@ See [`examples/simple-node/README.md`](examples/simple-node/README.md) for detai
 For issues, questions, or contributions:
 - **GitHub Issues**: [Create an issue](https://github.com/dTelecom/p2p-database/issues)
 - **Documentation**: See `ARCHITECTURE.md` for technical details
-- **Examples**: See `examples/simple-node/` for working examples 
+- **Examples**: See [the Go integration fixtures](test/integration_test.go).
