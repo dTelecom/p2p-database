@@ -209,82 +209,14 @@ func getBootstrapNodes(ctx context.Context) ([]common.BootstrapNode, error) {
 
 ## Testing
 
-Run the integration tests:
+Run the integration tests with local sockets available. The fixtures supply their own wallets and registry callbacks.
 
 ```bash
 go test ./test/...
+go test -race ./...
 ```
 
-Note: Tests require a valid Solana wallet private key for full functionality.
-
-### **Test Suite Overview**
-
-The project includes **44 comprehensive tests** covering all critical functionality:
-
-#### **Core Functionality Tests**
-- **Multi-Node Pub/Sub**: 3+ node communication with message verification
-- **Topic Isolation**: Ensures topics are properly isolated across nodes
-- **Authorization**: Unauthorized node blocking and authorized node acceptance
-- **Unsubscribe**: Proper cleanup when unsubscribing from topics
-- **Edge Cases**: Publish-then-subscribe scenarios and timing edge cases
-
-#### **Network Resilience Tests**
-- **Bootstrap Retry**: Tests automatic retry when bootstrap nodes are unavailable
-- **Client Before Bootstrap**: Tests client nodes starting before bootstrap nodes
-- **Bootstrap Node Failover**: Tests network recovery when bootstrap nodes go down
-- **Readiness State Tracking**: Tests node readiness state management
-- **All Nodes Bootstrap**: Tests when all nodes are both bootstrap and authorized
-
-#### **Connectivity Tests**
-- **Basic Connectivity**: Multi-transport connection validation
-- **Bootstrap Validation**: Port and address validation across different configurations
-- **Network Recovery**: Tests network healing after failures
-
-### **Running Specific Test Categories**
-
-```bash
-# Run all tests
-go test -v ./test/...
-
-# Run only bootstrap retry tests
-go test -v -run TestBootstrapRetry ./test/...
-
-# Run only network resilience tests
-go test -v -run "TestBootstrap|TestClientStartsBefore|TestAllNodes" ./test/...
-
-# Run only pub/sub functionality tests
-go test -v -run "TestMultiNode|TestTopic|TestPublish" ./test/...
-
-# Run only authorization tests
-go test -v -run TestUnauthorized ./test/...
-```
-
-### **Test Architecture**
-
-**Multi-Node Testing Pattern**:
-- Tests use 2-3 nodes to simulate real network conditions
-- Each test verifies bidirectional communication
-- Tests include proper cleanup and resource management
-- Timeout-based verification for network convergence
-
-**Mock Registry Integration**:
-- Tests use mock authorization and bootstrap functions
-- Simulates real-world registry behavior
-- Tests dynamic registry updates and failover scenarios
-
-**Port Management**:
-- Tests use isolated port ranges (15001-16006) to avoid conflicts
-- Each test uses unique ports to prevent interference
-- Tests validate port configuration and address resolution
-
-### **Test Quality Assurance**
-
-All tests pass comprehensive quality checks:
-- ✅ **Race Condition Detection**: All tests are race-condition safe
-- ✅ **Resource Cleanup**: Proper cleanup of all resources
-- ✅ **Timeout Handling**: Appropriate timeouts for network operations
-- ✅ **Error Scenarios**: Tests cover both success and failure cases
-- ✅ **Concurrent Operations**: Tests handle concurrent pub/sub operations
+To select a scenario by name, use the Go test runner's filter. For example, `go test -run TestBootstrapRetry ./test/...` exercises the bootstrap retry cases.
 
 ## Configuration
 
